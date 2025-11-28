@@ -1,0 +1,6 @@
+.vscode/
+backup/
+figure/
+geometry/
+mesh/
+__pycache__/
