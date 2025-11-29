@@ -34,14 +34,13 @@ def generate_mesh(polygon: list, save_path: str, max_iter: int):
             iter = 0
             while True:
                 # Iterative improvement over points
-                triangulation, iter, plot_index, valid_sfs_list = iterate_over_points(
+                iter, points, triangulation, valid_sfs_list = iterate_over_points(
                     iter,
                     points,
-                    polygon_edges,
                     triangulation,
-                    area_polygon,
-                    plot_index,
-                    valid_sfs_list,
+                    polygon_edges=polygon_edges,
+                    area_polygon=area_polygon,
+                    valid_sfs_list=valid_sfs_list,
                 )
                 (
                     end,
@@ -71,14 +70,13 @@ def generate_mesh(polygon: list, save_path: str, max_iter: int):
                 if end:
                     break
                 # Iterative improvement over edges
-                triangulation, iter, plot_index, valid_sfs_list = iterate_over_edges(
+                iter, points, triangulation, valid_sfs_list = iterate_over_edges(
                     iter,
                     points,
-                    polygon_edges,
                     triangulation,
-                    area_polygon,
-                    plot_index,
-                    valid_sfs_list,
+                    polygon_edges=polygon_edges,
+                    area_polygon=area_polygon,
+                    valid_sfs_list=valid_sfs_list,
                 )
                 (
                     end,
@@ -116,7 +114,7 @@ def generate_mesh(polygon: list, save_path: str, max_iter: int):
 if __name__ == "__main__":
 
     # Load geometry
-    poly = meshio.read(os.path.join("geometry", "convex_2", "convex_2.vtu"))
+    poly = meshio.read(os.path.join("geometry", "nonconvex_3", "nonconvex_3.vtu"))
     boundary_edges = poly.cells_dict["line"]
     poly = poly.points[boundary_edges[:, 0]][:, :2]
 
@@ -124,7 +122,7 @@ if __name__ == "__main__":
     POLY = poly
     FIG_SAVE_PATH = os.path.join("figure", "results")
     MESH_SAVE_PATH = os.path.join("mesh", "results")
-    MAX_ITER = 100
+    MAX_ITER = 2000
     os.makedirs(FIG_SAVE_PATH, exist_ok=True)
     os.makedirs(MESH_SAVE_PATH, exist_ok=True)
 

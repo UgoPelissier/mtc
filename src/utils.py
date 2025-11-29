@@ -27,8 +27,8 @@ def plot_polygon_and_tris(
             pt1 = polygon[tri[i]]
             pt2 = polygon[tri[j]]
             plt.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], "-", color="blue")
-    poly_pts = np.concatenate((polygon, polygon[:1]), axis=0)
-    plt.plot(poly_pts[:, 0], poly_pts[:, 1], "--", color="gray")
+    # poly_pts = np.concatenate((polygon, polygon[:1]), axis=0)
+    # plt.plot(poly_pts[:, 0], poly_pts[:, 1], "--", color="gray")
     if missing_edges is not None:
         for edge in missing_edges:
             pt1 = polygon[edge[0]]

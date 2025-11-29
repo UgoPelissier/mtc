@@ -1,5 +1,7 @@
 import numpy as np
 
+from .utils import debug, plot_polygon_and_tris
+
 from .geometry import (
     area,
     polygon_area,
@@ -8,16 +10,10 @@ from .geometry import (
     shape_factors,
     triangles_to_edges,
     edges_in_triangulation,
-    elements_boundary,
     point_elements,
     edge_elements,
 )
-from .triangulation import (
-    point_of_cavity_to_others,
-    remove_triangles_from_triangulation,
-    add_triangles_to_triangulation,
-    best_point_of_cavity_to_others,
-)
+from .triangulation import point_of_cavity_to_others, cut_and_paste
 
 
 def remove_degenerate_triangles_from_triangulation(
@@ -107,117 +103,86 @@ def initial_triangulation(
     )
 
 
-def cut_and_paste(
-    points: np.ndarray,
-    triangulation: np.ndarray,
-    old_triangles: np.ndarray,
-    plot_index: int,
-    valid_sfs_list: list = None,
-) -> tuple[np.ndarray, int, list[float]]:
-    """
-    Perform cut-and-paste operation on a triangulation.
-    Args:
-        points (np.ndarray): The array of points.
-        triangulation (np.ndarray): The current triangulation.
-        old_triangles (np.ndarray): The triangles to be removed.
-        plot_index (int): The current plot index.
-        valid_sfs_list (list, optional): A list of valid shape factors. Defaults to None.
-    Returns:
-        tuple[np.ndarray, int, list]: The updated triangulation, plot index, and valid shape factors list.
-    """
-    # Find cavity boundary
-    bound_edges, bound_points = elements_boundary(old_triangles)
-    # Try all boundary points and select the best
-    new_triangles, _ = best_point_of_cavity_to_others(points, bound_points, bound_edges)
-    if len(new_triangles) > 0:
-        # Remove old triangles
-        triangulation = remove_triangles_from_triangulation(
-            old_triangles, triangulation
-        )
-        # Add new triangles
-        triangulation = add_triangles_to_triangulation(new_triangles, triangulation)
-    return triangulation, plot_index, valid_sfs_list
-
-
 def iterate_over_points(
     iter: int,
     points: np.ndarray,
-    polygon_edges: np.ndarray,
     triangulation: np.ndarray,
-    area_polygon: float,
-    plot_index: int,
-    valid_sfs_list: list,
-) -> tuple[np.ndarray, int, int, list[float]]:
+    improve: bool = False,
+    polygon_edges: np.ndarray = None,
+    area_polygon: float = None,
+    valid_sfs_list: list = None,
+) -> tuple[int, np.ndarray, np.ndarray, list[float]]:
     """
     Iterate over points to improve triangulation.
     Args:
         iter (int): The current iteration count.
         points (np.ndarray): The array of points.
-        polygon_edges (np.ndarray): The edges of the polygon.
         triangulation (np.ndarray): The current triangulation.
-        area_polygon (float): The area of the polygon.
-        plot_index (int): The current plot index.
+        improve (bool, optional): Whether to improve triangulation. Defaults to False.
+        polygon_edges (np.ndarray, optional): The edges of the polygon. Defaults to None.
+        area_polygon (float, optional): The area of the polygon. Defaults to None.
         valid_sfs_list (list, optional): A list of valid shape factors. Defaults to None.
     Returns:
-        tuple[np.ndarray, np.ndarray, int, int, list]: The updated triangulation, edges, iteration count, plot index
-        and valid shape factors list.
+        tuple[int, np.ndarray, np.ndarray, list]: The updated iter, points, triangulation, and valid shape factors list.
     """
-    for i in range(len(points)):
-        iter += 1
-        old_triangles = point_elements(i, triangulation)
-        if len(old_triangles) > 0:
-            triangulation, plot_index, valid_sfs_list = cut_and_paste(
-                points,
-                triangulation,
-                old_triangles,
-                plot_index,
-                valid_sfs_list,
-            )
-    _, valid_sfs_list = check_triangulation_validity(
-        points, polygon_edges, triangulation, area_polygon, valid_sfs_list
-    )
-    return triangulation, iter, plot_index, valid_sfs_list
+    start_points = points.copy()
+    for i in range(len(start_points)):
+        if np.any(np.all(np.abs(points - start_points[i]) < 1e-8, axis=1)):
+            iter += 1
+            old_triangles = point_elements(i, triangulation)
+            if len(old_triangles) > 0:
+                points, triangulation = cut_and_paste(
+                    points,
+                    triangulation,
+                    old_triangles,
+                    improve,
+                )
+    if not improve:
+        _, valid_sfs_list = check_triangulation_validity(
+            points, polygon_edges, triangulation, area_polygon, valid_sfs_list
+        )
+    return iter, points, triangulation, valid_sfs_list
 
 
 def iterate_over_edges(
     iter: int,
     points: np.ndarray,
-    polygon_edges: np.ndarray,
     triangulation: np.ndarray,
-    area_polygon: float,
-    plot_index: int,
-    valid_sfs_list: list,
-) -> tuple[np.ndarray, int, int, list[float]]:
+    improve: bool = False,
+    polygon_edges: np.ndarray = None,
+    area_polygon: float = None,
+    valid_sfs_list: list = None,
+) -> tuple[int, np.ndarray, np.ndarray, list[float]]:
     """
     Iterate over points to improve triangulation.
     Args:
         iter (int): The current iteration count.
         points (np.ndarray): The array of points.
-        polygon_edges (np.ndarray): The edges of the polygon.
         triangulation (np.ndarray): The current triangulation.
-        edges (np.ndarray): The edges of the triangulation.
-        area_polygon (float): The area of the polygon.
-        plot_index (int): The current plot index.
+        improve (bool, optional): Whether to improve triangulation. Defaults to False.
+        polygon_edges (np.ndarray, optional): The edges of the polygon. Defaults to None.
+        area_polygon (float, optional): The area of the polygon. Defaults to None.
         valid_sfs_list (list, optional): A list of valid shape factors. Defaults to None.
-        save_path (str, optional): The path to save plots. Defaults to None.
     Returns:
-        tuple[np.ndarray, np.ndarray, int, int, list]: The updated triangulation, iteration count, plot index
-        and valid shape factors list.
+        tuple[int, np.ndarray, np.ndarray, list]: The updated iter, points, triangulation, and valid shape factors list.
     """
-    edges = triangles_to_edges(triangulation)
-    for edge in edges:
-        iter += 1
-        old_triangles = edge_elements(edge, triangulation)
-        if len(old_triangles) > 0:
-            triangulation, plot_index, valid_sfs_list = cut_and_paste(
-                points,
-                triangulation,
-                old_triangles,
-                plot_index,
-                valid_sfs_list,
-            )
-    _, valid_sfs_list = check_triangulation_validity(
-        points, polygon_edges, triangulation, area_polygon, valid_sfs_list
-    )
-    edges = triangles_to_edges(triangulation)
-    return triangulation, iter, plot_index, valid_sfs_list
+    start_edges = triangles_to_edges(triangulation)
+    edges = start_edges.copy()
+    for edge in start_edges:
+        edges_set = set(map(tuple, edges))
+        if tuple(edge) in edges_set:
+            iter += 1
+            old_triangles = edge_elements(edge, triangulation)
+            if len(old_triangles) > 0:
+                points, triangulation = cut_and_paste(
+                    points,
+                    triangulation,
+                    old_triangles,
+                    improve,
+                )
+                edges = triangles_to_edges(triangulation)
+    if not improve:
+        _, valid_sfs_list = check_triangulation_validity(
+            points, polygon_edges, triangulation, area_polygon, valid_sfs_list
+        )
+    return iter, points, triangulation, valid_sfs_list

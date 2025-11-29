@@ -64,6 +64,18 @@ def polygon_to_edges(polygon: np.ndarray) -> np.ndarray:
     return np.array(edges)
 
 
+def point_in_triangles(index: int, triangles: np.ndarray) -> bool:
+    """
+    Check if a point is part of any triangle in a triangulation.
+    Args:
+        index (int): The index of the point.
+        triangles (np.ndarray): An array of triangles, each represented by a 3x2 array of vertices.
+    Returns:
+        bool: True if the point is part of any triangle, False otherwise.
+    """
+    return index in triangles.flatten()
+
+
 def point_neighbors(index: int, triangles: np.ndarray) -> np.ndarray:
     """
     Get neighboring points of a given point in a triangulation.
@@ -100,16 +112,16 @@ def point_elements(index: int, triangles: np.ndarray) -> np.ndarray:
     return np.array(elements)
 
 
-def convex_hull_indices(points: np.ndarray, indices: list[int]) -> list[int]:
+def convex_hull_indices(points: np.ndarray, indices: np.ndarray) -> np.ndarray:
     """
     Compute the convex hull of a subset of points.
 
     Args:
         points (np.ndarray): (N,2) array of all points
-        indices (list or np.ndarray): list/array of indices selecting the subset
+        indices (np.ndarray): array of indices selecting the subset
 
     Returns:
-        list: hull_indices (original indices of hull vertices in CCW order)
+        np.ndarray: hull_indices (original indices of hull vertices in CCW order)
     """
 
     # Extract subset
@@ -134,21 +146,21 @@ def convex_hull_indices(points: np.ndarray, indices: list[int]) -> list[int]:
     # Build lower hull
     lower = []
     for p, i in zip(pts_sorted, idx_sorted):
-        while len(lower) >= 2 and cross(points[lower[-2]], points[lower[-1]], p) <= 0:
+        while len(lower) >= 2 and cross(points[lower[-2]], points[lower[-1]], p) < 0:
             lower.pop()
         lower.append(i)
 
     # Build upper hull
     upper = []
     for p, i in zip(pts_sorted[::-1], idx_sorted[::-1]):
-        while len(upper) >= 2 and cross(points[upper[-2]], points[upper[-1]], p) <= 0:
+        while len(upper) >= 2 and cross(points[upper[-2]], points[upper[-1]], p) < 0:
             upper.pop()
         upper.append(i)
 
     # Remove last duplicate point of each
     hull = lower[:-1] + upper[:-1]
 
-    return hull
+    return np.array(hull)
 
 
 # --------------------
@@ -263,15 +275,16 @@ def edge_elements(edge: np.ndarray, triangles: np.ndarray) -> np.ndarray:
 
 
 # --------------------
-# TRIANGLES
+# TRIANGLE
 # --------------------
 
 
-def area(triangle: np.ndarray) -> float:
+def area(triangle: np.ndarray, metrique: np.ndarray = np.eye(2)) -> float:
     """
     Calculate the area of a triangle given its vertices.
     Args:
         triangle (np.ndarray): A 3x2 array representing the triangle's vertices.
+        metrique (np.ndarray): A 2x2 array representing the metric tensor.
     Returns:
         float: The area of the triangle.
     """
@@ -280,7 +293,132 @@ def area(triangle: np.ndarray) -> float:
     c = triangle[2]
     return abs(
         (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1])) / 2.0
-    )
+    ) * math.sqrt(np.linalg.det(metrique))
+
+
+def distance(p1: np.ndarray, p2: np.ndarray, metrique: np.ndarray = np.eye(2)) -> float:
+    """
+    Calculate the distance between two points.
+    Args:
+        p1 (np.ndarray): The first point.
+        p2 (np.ndarray): The second point.
+        metrique (np.ndarray): A 2x2 array representing the metric tensor.
+    Returns:
+        float: The distance between the two points.
+    """
+    diff = p2 - p1
+    return math.sqrt(diff.T @ metrique @ diff)
+
+
+def min_edge_length(triangle: np.ndarray, metrique: np.ndarray = np.eye(2)) -> float:
+    """
+    Calculate the minimum edge length of a triangle.
+    Args:
+        triangle (np.ndarray): A 3x2 array representing the vertices of the triangle.
+        metrique (np.ndarray): A 2x2 array representing the metric tensor.
+    Returns:
+        float: The minimum edge length of the triangle.
+    """
+    edge_lengths = []
+    for i in range(len(triangle)):
+        j = (i + 1) % len(triangle)
+        length = distance(triangle[i], triangle[j], metrique)
+        edge_lengths.append(length)
+    return min(edge_lengths)
+
+
+def max_edge_length(triangle: np.ndarray, metrique: np.ndarray = np.eye(2)) -> float:
+    """
+    Calculate the maximum edge length of a triangle.
+    Args:
+        triangle (np.ndarray): A 3x2 array representing the vertices of the triangle.
+        metrique (np.ndarray): A 2x2 array representing the metric tensor.
+    Returns:
+        float: The maximum edge length of the triangle.
+    """
+    edge_length = 0.0
+    for i in range(len(triangle)):
+        j = (i + 1) % len(triangle)
+        edge_length = max(
+            edge_length,
+            distance(triangle[i], triangle[j], metrique),
+        )
+    return edge_length
+
+
+def mean_edge_length(triangle: np.ndarray, metrique: np.ndarray = np.eye(2)) -> float:
+    """
+    Calculate the mean edge length of a triangle.
+    Args:
+        triangle (np.ndarray): A 3x2 array representing the vertices of the triangle.
+        metrique (np.ndarray): A 2x2 array representing the metric tensor.
+    Returns:
+        float: The mean edge length of the triangle.
+    """
+    edge_length = 0.0
+    for i in range(len(triangle)):
+        j = (i + 1) % len(triangle)
+        edge_length += distance(triangle[i], triangle[j], metrique)
+    return math.sqrt(edge_length / 3.0)
+
+
+def reference_area() -> float:
+    """
+    Get the reference area for shape factor calculation.
+    Returns:
+        float: The reference area.
+    """
+    return math.sqrt(3) / 4.0
+
+
+def normalization_factor() -> float:
+    """
+    Get the normalization factor for shape factor calculation.
+    Returns:
+        float: The normalization factor.
+    """
+    v0 = reference_area()
+    c0 = 1 / v0
+    return c0
+
+
+def shape_factor(triangle: np.ndarray, metrique: np.ndarray = np.eye(2)) -> float:
+    """
+    Calculate the shape factor of a triangle.
+    Args:
+        triangle (np.ndarray): A 3x2 array representing the vertices of the triangle.
+        metrique (np.ndarray): A 2x2 array representing the metric tensor.
+    Returns:
+        float: The shape factor of the triangle.
+    """
+    metrique = 100 * np.eye(2)
+    h = mean_edge_length(triangle, metrique)
+    if h == 0:
+        return 0.0
+    return normalization_factor() * area(triangle, metrique) / (h * h)
+
+
+def min_edge_length_shape_factor(
+    triangle: np.ndarray, metrique: np.ndarray = np.eye(2)
+) -> float:
+    """
+    Return the minimum between the edge length and the shape factor of a triangle.
+    Args:
+        triangle (np.ndarray): A 3x2 array representing the vertices of the triangle.
+        metrique (np.ndarray): A 2x2 array representing the metric tensor.
+    Returns:
+        float: The minimum between the edge length and the shape factor.
+    """
+    h = mean_edge_length(triangle, metrique)
+    if h == 0:
+        return 0.0
+    sf = shape_factor(triangle, metrique)
+    return min(sf, h**2, 1.0 / h**2)
+
+
+# --------------------
+# TRIANGLES
+# --------------------
 
 
 def total_area(triangles: np.ndarray) -> float:
@@ -321,70 +459,24 @@ def triangles_to_edges(triangles: np.ndarray) -> np.ndarray:
     return np.array(list(edges.keys()))
 
 
-def mean_edge_length(triangle: np.ndarray) -> float:
+def min_max_edge_length(triangles: np.ndarray) -> tuple[float, float]:
     """
-    Calculate the mean edge length of a triangle.
+    Calculate the minimum and maximum edge lengths among multiple triangles.
     Args:
-        triangle (np.ndarray): A 3x2 array representing the vertices of the triangle.
+        triangles (np.ndarray): An array of triangles, each represented by a 3x2 array of vertices.
     Returns:
-        float: The mean edge length of the triangle.
+        tuple[float, float]: A tuple containing the minimum and maximum edge lengths.
     """
-    edge_length = 0.0
-    for i in range(len(triangle)):
-        j = (i + 1) % len(triangle)
-        edge_length += (triangle[i][0] - triangle[j][0]) ** 2 + (
-            triangle[i][1] - triangle[j][1]
-        ) ** 2
-    return math.sqrt(edge_length / 3.0)
-
-
-def reference_area() -> float:
-    """
-    Get the reference area for shape factor calculation.
-    Returns:
-        float: The reference area.
-    """
-    return math.sqrt(3) / 4.0
-
-
-def normalization_factor() -> float:
-    """
-    Get the normalization factor for shape factor calculation.
-    Returns:
-        float: The normalization factor.
-    """
-    v0 = reference_area()
-    c0 = 1 / v0
-    return c0
-
-
-def shape_factor(triangle: np.ndarray) -> float:
-    """
-    Calculate the shape factor of a triangle.
-    Args:
-        triangle (np.ndarray): A 3x2 array representing the vertices of the triangle.
-    Returns:
-        float: The shape factor of the triangle.
-    """
-    h = mean_edge_length(triangle)
-    if h == 0:
-        return 0.0
-    return normalization_factor() * area(triangle) / (h * h)
-
-
-def min_edge_length_shape_factor(triangle: np.ndarray) -> float:
-    """
-    Return the minimum between the edge length and the shape factor of a triangle.
-    Args:
-        triangle (np.ndarray): A 3x2 array representing the vertices of the triangle.
-    Returns:
-        float: The minimum between the edge length and the shape factor.
-    """
-    h = mean_edge_length(triangle)
-    if h == 0:
-        return 0.0
-    sf = shape_factor(triangle)
-    return min(h, sf**2, 1.0 / sf**2)
+    min_length = float("inf")
+    max_length = 0.0
+    for triangle in triangles:
+        triangle_min = min_edge_length(triangle)
+        triangle_max = max_edge_length(triangle)
+        if triangle_min < min_length:
+            min_length = triangle_min
+        if triangle_max > max_length:
+            max_length = triangle_max
+    return min_length, max_length
 
 
 def shape_factors(triangles: np.ndarray) -> np.ndarray:
@@ -398,6 +490,21 @@ def shape_factors(triangles: np.ndarray) -> np.ndarray:
     factors = []
     for triangle in triangles:
         factors.append(shape_factor(triangle))
+    factors = np.array(factors)
+    return np.sort(factors)
+
+
+def min_edge_length_shape_factors(triangles: np.ndarray) -> np.ndarray:
+    """
+    Calculate the minimum edge length shape factors of multiple triangles.
+    Args:
+        triangles (np.ndarray): An array of triangles, each represented by a 3x2 array of vertices.
+    Returns:
+        np.ndarray: A sorted array of minimum edge length shape factors.
+    """
+    factors = []
+    for triangle in triangles:
+        factors.append(min_edge_length_shape_factor(triangle))
     factors = np.array(factors)
     return np.sort(factors)
 
@@ -423,3 +530,44 @@ def elements_boundary(triangles: np.ndarray) -> np.ndarray:
         [edge for edge, count in edge_count.items() if count == 1]
     )
     return boundary_edges, np.unique(boundary_edges.flatten())
+
+
+def convex_hull(
+    points: np.ndarray, triangles: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute the convex hull of a set of points given a triangulation.
+    Args:
+        points (np.ndarray): An array of points.
+        triangles (np.ndarray): An array of triangles, each represented by a 3x2 array of vertices.
+    Returns:
+        tuple: A tuple containing the hull points indices, hull edges and indices of points not forming the hull.
+    """
+    boundary_points = np.unique(triangles.flatten())
+    hull_indices = convex_hull_indices(points, boundary_points)
+    hull_edges = np.array(
+        [
+            (hull_indices[i], hull_indices[(i + 1) % len(hull_indices)])
+            for i in range(len(hull_indices))
+        ]
+    )
+    return hull_indices, hull_edges, np.setdiff1d(boundary_points, hull_indices)
+
+
+def remove_unused_points(
+    points: np.ndarray, triangles: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Remove unused points from the points array and update the triangles accordingly.
+    Args:
+        points (np.ndarray): An array of points.
+        triangles (np.ndarray): An array of triangles, each represented by a 3x2 array of vertices.
+    Returns:
+        tuple: A tuple containing the updated points array and the updated triangles array.
+    """
+    used_indices = np.unique(triangles)
+    new_index_map = -np.ones(points.shape[0], dtype=int)
+    new_index_map[used_indices] = np.arange(len(used_indices))
+    new_triangles = new_index_map[triangles]
+    new_points = points[used_indices]
+    return new_points, new_triangles
